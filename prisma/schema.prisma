@@ -1,0 +1,306 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== USERS & AUTH ====================
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  name           String
+  passwordHash   String
+  role           String    @default("medewerker") // admin, medewerker, adviseur, extern
+  avatar         String?
+  phone          String?
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  communications Communication[]
+  mysteryVisits  MysteryVisit[]
+  tasks          Task[]
+  activities     Activity[]
+}
+
+// ==================== PAVILJOENS ====================
+
+model Paviljoen {
+  id              String   @id @default(cuid())
+  naam            String
+  locatie         String
+  gemeente        String?
+  provincie       String?
+  status          String   @default("actief") // actief, in_verkoop, verkocht, inactief
+  omschrijving    String?
+  typeExploitatie String?  // horeca, strandtent, evenementen, etc.
+  oppervlakte     Float?
+  capaciteit      Int?
+  seizoen         String?  // bijv. "april-oktober"
+  vraagprijs      Float?
+  foto            String?  // hoofdfoto URL
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  contactpersonen PaviljoenContact[]
+  documenten      Document[]
+  mysteryVisits   MysteryVisit[]
+  financials      Financial[]
+  fotos           PaviljoenFoto[]
+  kopiInteresses  KoperInteresse[]
+  deals           Deal[]
+  communications  Communication[]
+  activities      Activity[]
+  tasks           Task[]
+}
+
+model PaviljoenContact {
+  id           String    @id @default(cuid())
+  paviljoenId  String
+  naam         String
+  rol          String?   // eigenaar, beheerder, contact
+  email        String?
+  telefoon     String?
+  notities     String?
+  createdAt    DateTime  @default(now())
+
+  paviljoen    Paviljoen @relation(fields: [paviljoenId], references: [id], onDelete: Cascade)
+}
+
+model PaviljoenFoto {
+  id           String    @id @default(cuid())
+  paviljoenId  String
+  url          String
+  beschrijving String?
+  volgorde     Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  paviljoen    Paviljoen @relation(fields: [paviljoenId], references: [id], onDelete: Cascade)
+}
+
+// ==================== KOPERS / CRM ====================
+
+model Koper {
+  id              String   @id @default(cuid())
+  naam            String
+  email           String?
+  telefoon        String?
+  bedrijfsnaam    String?
+  type            String?  // particulier, investeerder, exploitant, keten
+  budget          Float?
+  budgetMax       Float?
+  regio           String?  // gewenste regio
+  status          String   @default("nieuw") // nieuw, actief, warm, afgewezen, deal
+  bron            String?  // website, netwerk, advertentie, etc.
+  notities        String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  interesses      KoperInteresse[]
+  deals           Deal[]
+  communications  Communication[]
+  activities      Activity[]
+  tasks           Task[]
+}
+
+model KoperInteresse {
+  id           String    @id @default(cuid())
+  koperId      String
+  paviljoenId  String
+  niveau       String    @default("interesse") // interesse, bezichtiging, bieding, onderhandeling
+  notities     String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  koper        Koper     @relation(fields: [koperId], references: [id], onDelete: Cascade)
+  paviljoen    Paviljoen @relation(fields: [paviljoenId], references: [id], onDelete: Cascade)
+
+  @@unique([koperId, paviljoenId])
+}
+
+// ==================== DEALS / DEALFLOW ====================
+
+model Deal {
+  id              String   @id @default(cuid())
+  paviljoenId     String
+  koperId         String?
+  titel           String
+  fase            String   @default("oriëntatie") // oriëntatie, nda, documenten, bezichtiging, bieding, onderhandeling, due_diligence, afgerond, afgebroken
+  ndaStatus       String?  // niet_verstuurd, verstuurd, ondertekend
+  ndaDatum        DateTime?
+  biedingBedrag   Float?
+  biedingDatum    DateTime?
+  verkoopBedrag   Float?
+  verkoopDatum    DateTime?
+  status          String   @default("actief") // actief, succesvol, afgebroken
+  notities        String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  paviljoen       Paviljoen @relation(fields: [paviljoenId], references: [id], onDelete: Cascade)
+  koper           Koper?    @relation(fields: [koperId], references: [id], onDelete: SetNull)
+  documenten      Document[]
+  activities      Activity[]
+}
+
+// ==================== DOCUMENTEN ====================
+
+model Document {
+  id           String    @id @default(cuid())
+  naam         String
+  categorie    String    // contract, vergunning, financieel, brochure, regelgeving, erfpacht, notitie, overig
+  bestandspad  String
+  bestandstype String?   // pdf, docx, xlsx, etc.
+  grootte      Int?      // bytes
+  paviljoenId  String?
+  dealId       String?
+  notities     String?
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  paviljoen    Paviljoen? @relation(fields: [paviljoenId], references: [id], onDelete: SetNull)
+  deal         Deal?      @relation(fields: [dealId], references: [id], onDelete: SetNull)
+}
+
+// ==================== MYSTERY VISITS ====================
+
+model MysteryVisit {
+  id              String   @id @default(cuid())
+  paviljoenId     String
+  beoordelaarId   String?
+  datum           DateTime
+  totaalScore     Float?
+  maxScore        Float?
+  opmerkingen     String?
+  verbeterpunten  String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  paviljoen       Paviljoen @relation(fields: [paviljoenId], references: [id], onDelete: Cascade)
+  beoordelaar     User?     @relation(fields: [beoordelaarId], references: [id], onDelete: SetNull)
+  scores          MysteryVisitScore[]
+  bijlagen        MysteryVisitBijlage[]
+}
+
+model MysteryVisitScore {
+  id              String       @id @default(cuid())
+  mysteryVisitId  String
+  categorie       String       // ontvangst, sfeer, service, eten_drinken, hygiëne, presentatie, etc.
+  score           Float
+  maxScore        Float        @default(10)
+  opmerking       String?
+
+  mysteryVisit    MysteryVisit @relation(fields: [mysteryVisitId], references: [id], onDelete: Cascade)
+}
+
+model MysteryVisitBijlage {
+  id              String       @id @default(cuid())
+  mysteryVisitId  String
+  url             String
+  beschrijving    String?
+
+  mysteryVisit    MysteryVisit @relation(fields: [mysteryVisitId], references: [id], onDelete: Cascade)
+}
+
+// ==================== FINANCIËLE DATA ====================
+
+model Financial {
+  id                  String    @id @default(cuid())
+  paviljoenId         String
+  jaar                Int
+  maand               Int?      // null = jaarlijks
+  omzet               Float?
+  ebitda              Float?
+  nettoWinst          Float?
+  personeelskosten    Float?
+  inkoopkosten        Float?
+  huisvestingskosten  Float?
+  marketingkosten     Float?
+  gemiddeldeBesteding Float?
+  aantalBezoekers     Int?
+  klantwaardering     Float?
+  reviewScore         Float?
+  aantalReviews       Int?
+
+  notities            String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  paviljoen           Paviljoen @relation(fields: [paviljoenId], references: [id], onDelete: Cascade)
+
+  @@unique([paviljoenId, jaar, maand])
+}
+
+// ==================== COMMUNICATIE ====================
+
+model Communication {
+  id           String    @id @default(cuid())
+  type         String    // email, telefoon, whatsapp, notitie, vergadering, intern
+  onderwerp    String?
+  inhoud       String
+  richting     String?   // inkomend, uitgaand, intern
+  koperId      String?
+  paviljoenId  String?
+  userId       String?
+
+  createdAt    DateTime  @default(now())
+
+  koper        Koper?     @relation(fields: [koperId], references: [id], onDelete: SetNull)
+  paviljoen    Paviljoen? @relation(fields: [paviljoenId], references: [id], onDelete: SetNull)
+  user         User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+// ==================== ACTIVITEITEN (TIJDLIJN) ====================
+
+model Activity {
+  id           String    @id @default(cuid())
+  type         String    // created, updated, status_change, document_added, communication, deal_update, visit
+  beschrijving String
+  metadata     String?   // JSON string voor extra data
+
+  userId       String?
+  paviljoenId  String?
+  koperId      String?
+  dealId       String?
+
+  createdAt    DateTime  @default(now())
+
+  user         User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  paviljoen    Paviljoen? @relation(fields: [paviljoenId], references: [id], onDelete: SetNull)
+  koper        Koper?     @relation(fields: [koperId], references: [id], onDelete: SetNull)
+  deal         Deal?      @relation(fields: [dealId], references: [id], onDelete: SetNull)
+}
+
+// ==================== TAKEN ====================
+
+model Task {
+  id           String    @id @default(cuid())
+  titel        String
+  beschrijving String?
+  deadline     DateTime?
+  prioriteit   String    @default("normaal") // laag, normaal, hoog, urgent
+  status       String    @default("open") // open, in_progress, afgerond
+
+  userId       String?
+  paviljoenId  String?
+  koperId      String?
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user         User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  paviljoen    Paviljoen? @relation(fields: [paviljoenId], references: [id], onDelete: SetNull)
+  koper        Koper?     @relation(fields: [koperId], references: [id], onDelete: SetNull)
+}
