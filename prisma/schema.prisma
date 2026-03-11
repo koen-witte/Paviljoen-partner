@@ -34,8 +34,11 @@ model Paviljoen {
   id              String   @id @default(cuid())
   naam            String
   locatie         String
+  badplaats       String?
   gemeente        String?
   provincie       String?
+  website         String?
+  telefoon        String?
   status          String   @default("actief") // actief, in_verkoop, verkocht, inactief
   omschrijving    String?
   typeExploitatie String?  // horeca, strandtent, evenementen, etc.

@@ -40,8 +40,11 @@ export async function POST(request: NextRequest) {
     const {
       naam,
       locatie,
+      badplaats,
       gemeente,
       provincie,
+      website,
+      telefoon,
       status,
       omschrijving,
       typeExploitatie,
@@ -63,8 +66,11 @@ export async function POST(request: NextRequest) {
       data: {
         naam,
         locatie,
+        badplaats: badplaats || null,
         gemeente: gemeente || null,
         provincie: provincie || null,
+        website: website || null,
+        telefoon: telefoon || null,
         status: status || "actief",
         omschrijving: omschrijving || null,
         typeExploitatie: typeExploitatie || null,

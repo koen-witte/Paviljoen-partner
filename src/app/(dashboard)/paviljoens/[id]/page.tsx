@@ -143,9 +143,32 @@ export default async function PaviljoenDetailPage({ params }: PageProps) {
               <p className="mt-1 flex items-center gap-1.5 text-sm text-text-muted">
                 <MapPin className="h-4 w-4 shrink-0" />
                 {paviljoen.locatie}
+                {paviljoen.badplaats && ` · ${paviljoen.badplaats}`}
                 {paviljoen.gemeente && `, ${paviljoen.gemeente}`}
                 {paviljoen.provincie && ` (${paviljoen.provincie})`}
               </p>
+              <div className="mt-1 flex flex-wrap items-center gap-4 text-sm text-text-muted">
+                {paviljoen.website && (
+                  <a
+                    href={paviljoen.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 hover:text-primary transition-colors"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    {paviljoen.website.replace(/^https?:\/\//, "")}
+                  </a>
+                )}
+                {paviljoen.telefoon && (
+                  <a
+                    href={`tel:${paviljoen.telefoon}`}
+                    className="flex items-center gap-1 hover:text-primary transition-colors"
+                  >
+                    <Phone className="h-3.5 w-3.5" />
+                    {paviljoen.telefoon}
+                  </a>
+                )}
+              </div>
             </div>
           </div>
 
