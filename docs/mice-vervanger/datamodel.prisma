@@ -1,0 +1,780 @@
+// Concept-datamodel voor het eigen eventsysteem (vervanger van MICE Operations).
+// Dit bestand is documentatie; het is nog niet gekoppeld aan de app in deze repo.
+// Doel-database: PostgreSQL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== ORGANISATIE & TOEGANG ====================
+
+model Vestiging {
+  id              String   @id @default(cuid())
+  slug            String   @unique // "texel", "sunsea"
+  naam            String
+  rechtspersoon   String   // "Beachclub Texel BV"
+  adres           String?
+  postcode        String?
+  plaats          String?
+  kvk             String?
+  btwNummer       String?
+  iban            String?
+  telefoon        String?
+  emailAfzender   String   // events@beachclubtexel.nl
+  emailReplyDomein String  // mail.beachclubtexel.nl (inbound)
+  logoUrl         String?
+  kleurPrimair    String?
+  kleurAccent     String?
+  standaardTaal   String   @default("nl")
+  tijdzone        String   @default("Europe/Amsterdam")
+  betaaltermijnDagen Int   @default(14)
+  optieDuurDagen  Int      @default(14)
+  prijsPeildatum  String   @default("evenement") // evenement | offerte
+  actief          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  gebruikers      GebruikerVestiging[]
+  ruimtes         Ruimte[]
+  eventTypes      EventType[]
+  categorieen     ProductCategorie[]
+  producten       Product[]
+  arrangementen   Arrangement[]
+  betaalregelingen Betaalregeling[]
+  sjablonen       Sjabloon[]
+  voorwaarden     Voorwaarden[]
+  nummerreeksen   NummerReeks[]
+  widgets         Widget[]
+  bedrijven       Bedrijf[]
+  contacten       Contact[]
+  evenementen     Evenement[]
+  facturen        Factuur[]
+  apiKeys         ApiKey[]
+  integraties     Integratie[]
+  webhooks        Webhook[]
+  workflows       Workflow[]
+}
+
+model Gebruiker {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  naam         String
+  wachtwoordHash String
+  telefoon     String?
+  actief       Boolean  @default(true)
+  isEigenaar   Boolean  @default(false) // cockpit: alle vestigingen
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  vestigingen  GebruikerVestiging[]
+  taken        Taak[]
+  gebeurtenissen Gebeurtenis[]
+  meldingsvoorkeuren Meldingsvoorkeur[]
+  evenementenEigenaar Evenement[] @relation("EvenementEigenaar")
+  conversatiesToegewezen Conversatie[]
+}
+
+model GebruikerVestiging {
+  gebruikerId String
+  vestigingId String
+  rol         String // eventmanager | administratie | operatie | alleen_lezen
+  gebruiker   Gebruiker @relation(fields: [gebruikerId], references: [id], onDelete: Cascade)
+  vestiging   Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+
+  @@id([gebruikerId, vestigingId])
+}
+
+model Meldingsvoorkeur {
+  id          String @id @default(cuid())
+  gebruikerId String
+  vestigingId String
+  gebeurtenis String // nieuwe_aanvraag | bericht_gast | offerte_geaccepteerd | betaling_ontvangen | ...
+  perEmail    Boolean @default(true)
+  inApp       Boolean @default(true)
+  gebruiker   Gebruiker @relation(fields: [gebruikerId], references: [id], onDelete: Cascade)
+
+  @@unique([gebruikerId, vestigingId, gebeurtenis])
+}
+
+// ==================== INRICHTING ====================
+
+model Ruimte {
+  id           String  @id @default(cuid())
+  vestigingId  String
+  naam         String
+  omschrijving String?
+  capaciteitZittend Int?
+  capaciteitStaand  Int?
+  binnen       Boolean @default(true)
+  volgorde     Int     @default(0)
+  actief       Boolean @default(true)
+  vestiging    Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  activiteiten Activiteit[]
+  zenchefZones IntegratieMapping[]
+}
+
+model EventType {
+  id                 String  @id @default(cuid())
+  vestigingId        String
+  naam               String  // Bruiloft, Bedrijfsuitje, Feest, Vergadering, Diner
+  omschrijving       String?
+  offerteSjabloonId  String?
+  betaalregelingId   String?
+  optieDuurDagen     Int?
+  kleur              String?
+  actief             Boolean @default(true)
+  vestiging          Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  offerteSjabloon    Sjabloon? @relation(fields: [offerteSjabloonId], references: [id])
+  betaalregeling     Betaalregeling? @relation(fields: [betaalregelingId], references: [id])
+  evenementen        Evenement[]
+  draaiboekBlauwdruk DraaiboekBlauwdrukItem[]
+  widgets            WidgetEventType[]
+}
+
+model ProductCategorie {
+  id          String  @id @default(cuid())
+  vestigingId String
+  naam        String  // Welkomst, Lunch, Diner, Drank, Activiteiten, Techniek, Extra's
+  afdeling    String? // keuken | bediening | activiteiten | techniek (voor werklijsten)
+  volgorde    Int     @default(0)
+  vestiging   Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  producten   Product[]
+}
+
+model Product {
+  id            String  @id @default(cuid())
+  vestigingId   String
+  categorieId   String?
+  naam          String
+  omschrijving  String? // extern, op offerte
+  interneNotitie String?
+  eenheid       String  @default("per_persoon") // per_persoon | per_stuk | per_uur | vast
+  btwTarief     Decimal @default(9) @db.Decimal(5, 2)
+  nacalculatie  Boolean @default(false) // drank, DJ: werkelijk aantal achteraf
+  fotoUrl       String?
+  actief        Boolean @default(true)
+  volgorde      Int     @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  vestiging     Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  categorie     ProductCategorie? @relation(fields: [categorieId], references: [id])
+  prijzen       ProductPrijs[]
+  regels        Regel[]
+  arrangementItems ArrangementItem[]
+}
+
+model ProductPrijs {
+  id         String   @id @default(cuid())
+  productId  String
+  naam       String   // "2026", "2027", "Hoogseizoen"
+  prijs      Decimal  @db.Decimal(10, 2) // excl. btw
+  geldigVan  DateTime?
+  geldigTot  DateTime?
+  standaard  Boolean  @default(false)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model Arrangement {
+  id            String  @id @default(cuid())
+  vestigingId   String
+  naam          String  // Basic, Basic+, Premium, Supreme
+  omschrijving  String?
+  prijsPerPersoon Decimal? @db.Decimal(10, 2)
+  vastePrijs    Decimal? @db.Decimal(10, 2)
+  minGasten     Int?
+  maxGasten     Int?
+  fotoUrl       String?
+  actief        Boolean @default(true)
+  inWidget      Boolean @default(true)
+  vestiging     Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  items         ArrangementItem[]
+  staffels      ArrangementStaffel[]
+  blauwdruk     DraaiboekBlauwdrukItem[]
+  regels        Regel[]
+}
+
+model ArrangementItem {
+  id             String  @id @default(cuid())
+  arrangementId  String
+  productId      String
+  soort          String  @default("inbegrepen") // inbegrepen | keuze | suggestie
+  keuzeGroep     String? // "Diner": één van ...
+  aantalPerPersoon Decimal? @db.Decimal(10, 3)
+  vastAantal     Int?
+  offsetMinuten  Int?    // t.o.v. start evenement, voor blauwdruk
+  arrangement    Arrangement @relation(fields: [arrangementId], references: [id], onDelete: Cascade)
+  product        Product @relation(fields: [productId], references: [id])
+}
+
+model ArrangementStaffel {
+  id            String  @id @default(cuid())
+  arrangementId String
+  vanafGasten   Int
+  prijsPerPersoon Decimal @db.Decimal(10, 2)
+  arrangement   Arrangement @relation(fields: [arrangementId], references: [id], onDelete: Cascade)
+}
+
+model DraaiboekBlauwdrukItem {
+  id            String  @id @default(cuid())
+  eventTypeId   String?
+  arrangementId String?
+  offsetMinuten Int     // relatief aan starttijd
+  duurMinuten   Int?
+  titel         String
+  afdeling      String?
+  omschrijving  String?
+  eventType     EventType? @relation(fields: [eventTypeId], references: [id], onDelete: Cascade)
+  arrangement   Arrangement? @relation(fields: [arrangementId], references: [id], onDelete: Cascade)
+}
+
+model Betaalregeling {
+  id          String  @id @default(cuid())
+  vestigingId String
+  naam        String  // "Texel standaard", "Sunsea 25/50/25", "Volledig vooraf"
+  omschrijving String?
+  termijnen   Json    // [{ "label": "Aanbetaling", "percentage": 30, "moment": "bij_bevestiging" }, { "percentage": 50, "moment": "dagen_voor_event", "dagen": 28 }, ...]
+  bonus       Json?   // { "type": "cadeaubon", "bedrag": 500 } | { "type": "korting", "percentage": 5 } | { "type": "tegoed", "percentage": 10, "besteedbaar": "horeca" }
+  standaard   Boolean @default(false)
+  vestiging   Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  eventTypes  EventType[]
+  evenementen Evenement[]
+}
+
+model Sjabloon {
+  id          String  @id @default(cuid())
+  vestigingId String
+  soort       String  // offerte | factuur | draaiboek_gast | email
+  sleutel     String? // voor email: offerte_verstuurd, offerte_verlopen, factuur, herinnering_1, evenement_over_week, ...
+  taal        String  @default("nl")
+  naam        String
+  onderwerp   String?
+  inhoud      String  // HTML/MJML met variabelen {{gast.voornaam}}
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  vestiging   Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  eventTypes  EventType[]
+
+  @@unique([vestigingId, soort, sleutel, taal])
+}
+
+model Voorwaarden {
+  id          String   @id @default(cuid())
+  vestigingId String
+  versie      String
+  bestandUrl  String
+  geldigVanaf DateTime
+  vestiging   Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  offertes    Offerte[]
+}
+
+model NummerReeks {
+  id          String @id @default(cuid())
+  vestigingId String
+  soort       String // offerte | factuur | credit
+  jaar        Int
+  prefix      String // "2026-" of "SUN26-"
+  laatste     Int    @default(0)
+  vestiging   Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+
+  @@unique([vestigingId, soort, jaar])
+}
+
+model Widget {
+  id            String  @id @default(cuid())
+  vestigingId   String
+  naam          String
+  token         String  @unique
+  intro         String?
+  toonBeschikbaarheid Boolean @default(true)
+  bevestigingAanGast  Boolean @default(true)
+  actief        Boolean @default(true)
+  vestiging     Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  eventTypes    WidgetEventType[]
+}
+
+model WidgetEventType {
+  widgetId    String
+  eventTypeId String
+  widget      Widget    @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+  eventType   EventType @relation(fields: [eventTypeId], references: [id], onDelete: Cascade)
+
+  @@id([widgetId, eventTypeId])
+}
+
+// ==================== CRM ====================
+
+model Bedrijf {
+  id           String  @id @default(cuid())
+  vestigingId  String
+  naam         String
+  soort        String? // klant | weddingplanner | bureau | leverancier
+  adres        String?
+  postcode     String?
+  plaats       String?
+  land         String  @default("NL")
+  kvk          String?
+  btwNummer    String?
+  factuurEmail String?
+  notities     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  vestiging    Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  contacten    Contact[]
+  evenementen  Evenement[]
+}
+
+model Contact {
+  id           String  @id @default(cuid())
+  vestigingId  String
+  bedrijfId    String?
+  voornaam     String
+  achternaam   String?
+  email        String?
+  telefoon     String?
+  taal         String  @default("nl")
+  adres        String?
+  postcode     String?
+  plaats       String?
+  land         String  @default("NL")
+  notities     String?
+  bron         String? // website | telefoon_bonnie | weddingplanner | herhaal | ...
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  vestiging    Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  bedrijf      Bedrijf? @relation(fields: [bedrijfId], references: [id])
+  evenementen  Evenement[] @relation("Opdrachtgever")
+  tussenpersoonVan Evenement[] @relation("Tussenpersoon")
+  tegoeden     Tegoed[]
+
+  @@index([vestigingId, email])
+}
+
+// ==================== EVENEMENTEN ====================
+
+model Evenement {
+  id               String   @id @default(cuid())
+  vestigingId      String
+  nummer           String   // intern volgnummer, bijv. T-2026-0143
+  naam             String
+  eventTypeId      String?
+  status           String   @default("aanvraag") // aanvraag | optie | offerte_verstuurd | bevestigd | verlopen | geannuleerd | afgerond
+  optieVervaltOp   DateTime?
+  datum            DateTime // startdatum
+  eindDatum        DateTime?
+  startTijd        String?  // "14:00"
+  eindTijd         String?
+  gastenVerwacht   Int?
+  gastenDefinitief Int?
+  aantallenDeadline DateTime?
+  opdrachtgeverId  String?
+  bedrijfId        String?
+  tussenpersoonId  String?
+  eigenaarId       String?
+  betaalregelingId String?
+  taal             String   @default("nl")
+  bron             String?
+  wensen           String?  // uit aanvraag
+  dieetwensen      String?
+  interneNotitie   String?
+  annuleringReden  String?
+  klantToken       String   @unique // klantomgeving
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  vestiging        Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  eventType        EventType? @relation(fields: [eventTypeId], references: [id])
+  opdrachtgever    Contact?  @relation("Opdrachtgever", fields: [opdrachtgeverId], references: [id])
+  bedrijf          Bedrijf?  @relation(fields: [bedrijfId], references: [id])
+  tussenpersoon    Contact?  @relation("Tussenpersoon", fields: [tussenpersoonId], references: [id])
+  eigenaar         Gebruiker? @relation("EvenementEigenaar", fields: [eigenaarId], references: [id])
+  betaalregeling   Betaalregeling? @relation(fields: [betaalregelingId], references: [id])
+
+  activiteiten     Activiteit[]
+  regels           Regel[]
+  offertes         Offerte[]
+  facturen         Factuur[]
+  draaiboek        DraaiboekItem[]
+  conversaties     Conversatie[]
+  taken            Taak[]
+  bijlagen         Bijlage[]
+  gebeurtenissen   Gebeurtenis[]
+  tegoeden         Tegoed[]
+  integratieRefs   IntegratieReferentie[]
+
+  @@unique([vestigingId, nummer])
+  @@index([vestigingId, datum])
+  @@index([vestigingId, status])
+}
+
+model Activiteit {
+  id           String   @id @default(cuid())
+  evenementId  String
+  ruimteId     String?
+  titel        String   // Ceremonie, Borrel, Diner, Feest
+  start        DateTime
+  eind         DateTime
+  gasten       Int?
+  omschrijving String?
+  volgorde     Int      @default(0)
+  evenement    Evenement @relation(fields: [evenementId], references: [id], onDelete: Cascade)
+  ruimte       Ruimte?   @relation(fields: [ruimteId], references: [id])
+  regels       Regel[]
+  integratieRefs IntegratieReferentie[]
+
+  @@index([ruimteId, start, eind])
+}
+
+model Regel {
+  id             String   @id @default(cuid())
+  evenementId    String
+  activiteitId   String?
+  productId      String?
+  arrangementId  String?  // regel komt uit arrangement
+  omschrijving   String   // snapshot van productnaam of vrije tekst
+  aantal         Decimal  @db.Decimal(10, 3)
+  eenheid        String
+  prijs          Decimal  @db.Decimal(10, 2) // excl. btw, vastgezet
+  btwTarief      Decimal  @db.Decimal(5, 2)
+  korting        Decimal? @db.Decimal(10, 2)
+  nacalculatie   Boolean  @default(false)
+  werkelijkAantal Decimal? @db.Decimal(10, 3)
+  tijdstip       DateTime? // ronde binnen activiteit
+  gastKeuze      Boolean  @default(false) // gast mag aan/uitzetten in offerte
+  gastGekozen    Boolean? 
+  volgorde       Int      @default(0)
+  evenement      Evenement @relation(fields: [evenementId], references: [id], onDelete: Cascade)
+  activiteit     Activiteit? @relation(fields: [activiteitId], references: [id], onDelete: SetNull)
+  product        Product?  @relation(fields: [productId], references: [id])
+  arrangement    Arrangement? @relation(fields: [arrangementId], references: [id])
+}
+
+// ==================== OFFERTES ====================
+
+model Offerte {
+  id             String   @id @default(cuid())
+  evenementId    String
+  nummer         String
+  versie         Int      @default(1)
+  status         String   @default("concept") // concept | verstuurd | geaccepteerd | verlopen | vervangen | ingetrokken
+  geldigTot      DateTime?
+  intro          String?
+  sjabloonHtml   String?  // gerenderde snapshot
+  totaalExcl     Decimal  @db.Decimal(12, 2)
+  totaalBtw      Decimal  @db.Decimal(12, 2)
+  totaalIncl     Decimal  @db.Decimal(12, 2)
+  betaalregelingSnapshot Json?
+  voorwaardenId  String?
+  publiekToken   String   @unique
+  verstuurdOp    DateTime?
+  geaccepteerdOp DateTime?
+  geaccepteerdDoor String?
+  geaccepteerdIp String?
+  geaccepteerdUserAgent String?
+  inhoudHash     String?
+  pdfUrl         String?
+  createdAt      DateTime @default(now())
+  evenement      Evenement @relation(fields: [evenementId], references: [id], onDelete: Cascade)
+  voorwaarden    Voorwaarden? @relation(fields: [voorwaardenId], references: [id])
+  regels         OfferteRegel[]
+
+  @@unique([evenementId, versie])
+}
+
+model OfferteRegel {
+  id           String  @id @default(cuid())
+  offerteId    String
+  groep        String? // activiteit-titel
+  omschrijving String
+  aantal       Decimal @db.Decimal(10, 3)
+  eenheid      String
+  prijs        Decimal @db.Decimal(10, 2)
+  btwTarief    Decimal @db.Decimal(5, 2)
+  totaalExcl   Decimal @db.Decimal(12, 2)
+  gastKeuze    Boolean @default(false)
+  gastGekozen  Boolean?
+  volgorde     Int     @default(0)
+  offerte      Offerte @relation(fields: [offerteId], references: [id], onDelete: Cascade)
+}
+
+// ==================== FACTURATIE ====================
+
+model Factuur {
+  id            String   @id @default(cuid())
+  vestigingId   String
+  evenementId   String?
+  nummer        String
+  soort         String   // aanbetaling | termijn | eind | credit
+  status        String   @default("concept") // concept | verstuurd | deels_betaald | betaald | vervallen | gecrediteerd
+  factuurDatum  DateTime
+  vervalDatum   DateTime
+  aanContact    Json     // snapshot naam/adres/btw
+  omschrijving  String?
+  totaalExcl    Decimal  @db.Decimal(12, 2)
+  totaalBtw     Decimal  @db.Decimal(12, 2)
+  totaalIncl    Decimal  @db.Decimal(12, 2)
+  verrekendAanbetaling Decimal @default(0) @db.Decimal(12, 2)
+  teBetalen     Decimal  @db.Decimal(12, 2)
+  betaald       Decimal  @default(0) @db.Decimal(12, 2)
+  creditVanId   String?
+  pdfUrl        String?
+  ublUrl        String?
+  mollieBetaallink String?
+  verstuurdOp   DateTime?
+  herinnering1Op DateTime?
+  herinnering2Op DateTime?
+  aanmaningOp   DateTime?
+  boekhoudingStatus String? // niet | verstuurd | geboekt | fout
+  boekhoudingRef String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  vestiging     Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  evenement     Evenement? @relation(fields: [evenementId], references: [id])
+  creditVan     Factuur?  @relation("Credit", fields: [creditVanId], references: [id])
+  credits       Factuur[] @relation("Credit")
+  regels        FactuurRegel[]
+  betalingen    Betaling[]
+
+  @@unique([vestigingId, nummer])
+}
+
+model FactuurRegel {
+  id           String  @id @default(cuid())
+  factuurId    String
+  omschrijving String
+  aantal       Decimal @db.Decimal(10, 3)
+  eenheid      String
+  prijs        Decimal @db.Decimal(10, 2)
+  btwTarief    Decimal @db.Decimal(5, 2)
+  totaalExcl   Decimal @db.Decimal(12, 2)
+  volgorde     Int     @default(0)
+  factuur      Factuur @relation(fields: [factuurId], references: [id], onDelete: Cascade)
+}
+
+model Betaling {
+  id         String   @id @default(cuid())
+  factuurId  String
+  bedrag     Decimal  @db.Decimal(12, 2)
+  methode    String   // mollie | bank | contant | tegoed | verrekening
+  referentie String?  // Mollie payment id of bankkenmerk
+  ontvangenOp DateTime
+  notitie    String?
+  createdAt  DateTime @default(now())
+  factuur    Factuur  @relation(fields: [factuurId], references: [id], onDelete: Cascade)
+}
+
+model Tegoed {
+  id          String   @id @default(cuid())
+  contactId   String?
+  evenementId String?
+  soort       String   // cadeaubon | tegoed_horeca | korting
+  bedrag      Decimal  @db.Decimal(12, 2)
+  resterend   Decimal  @db.Decimal(12, 2)
+  geldigTot   DateTime?
+  omschrijving String?
+  createdAt   DateTime @default(now())
+  contact     Contact?   @relation(fields: [contactId], references: [id])
+  evenement   Evenement? @relation(fields: [evenementId], references: [id])
+}
+
+// ==================== OPERATIE ====================
+
+model DraaiboekItem {
+  id           String   @id @default(cuid())
+  evenementId  String
+  tijd         DateTime
+  eindTijd     DateTime?
+  titel        String
+  afdeling     String?  // keuken | bediening | activiteiten | techniek | algemeen
+  ruimte       String?
+  aantal       Int?
+  omschrijving String?
+  zichtbaarVoorGast Boolean @default(false)
+  volgorde     Int      @default(0)
+  evenement    Evenement @relation(fields: [evenementId], references: [id], onDelete: Cascade)
+}
+
+model Taak {
+  id           String   @id @default(cuid())
+  vestigingId  String
+  evenementId  String?
+  titel        String
+  omschrijving String?
+  deadline     DateTime?
+  status       String   @default("open") // open | bezig | afgerond
+  toegewezenId String?
+  bronWorkflowId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  evenement    Evenement? @relation(fields: [evenementId], references: [id], onDelete: Cascade)
+  toegewezen   Gebruiker? @relation(fields: [toegewezenId], references: [id])
+}
+
+model Workflow {
+  id          String  @id @default(cuid())
+  vestigingId String
+  naam        String
+  trigger     String  // status:bevestigd | dagen_voor_event:7 | offerte:geaccepteerd | betaling:ontvangen
+  acties      Json    // [{ "type": "taak", "titel": "...", "deadlineDagen": -14 }, { "type": "email", "sjabloon": "..." }]
+  actief      Boolean @default(true)
+  vestiging   Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+}
+
+// ==================== COMMUNICATIE ====================
+
+model Conversatie {
+  id            String   @id @default(cuid())
+  evenementId   String?
+  onderwerp     String
+  status        String   @default("open") // open | behandeld
+  toegewezenId  String?
+  laatsteBerichtOp DateTime?
+  createdAt     DateTime @default(now())
+  evenement     Evenement? @relation(fields: [evenementId], references: [id], onDelete: SetNull)
+  toegewezen    Gebruiker? @relation(fields: [toegewezenId], references: [id])
+  berichten     Bericht[]
+}
+
+model Bericht {
+  id             String   @id @default(cuid())
+  conversatieId  String
+  richting       String   // in | uit | intern
+  kanaal         String   @default("email") // email | portal | intern
+  van            String
+  aan            String[]
+  cc             String[]
+  onderwerp      String?
+  tekst          String
+  html           String?
+  messageId      String?  @unique
+  inReplyTo      String?
+  status         String   @default("verzonden") // concept | ingepland | verzonden | afgeleverd | geopend | bounce | ontvangen
+  inplannenOp    DateTime?
+  verzondenDoorId String?
+  createdAt      DateTime @default(now())
+  conversatie    Conversatie @relation(fields: [conversatieId], references: [id], onDelete: Cascade)
+  bijlagen       Bijlage[]
+}
+
+model Bijlage {
+  id           String   @id @default(cuid())
+  evenementId  String?
+  berichtId    String?
+  naam         String
+  url          String
+  mimeType     String?
+  grootte      Int?
+  zichtbaarVoorGast Boolean @default(false)
+  geuploadDoorGast  Boolean @default(false)
+  createdAt    DateTime @default(now())
+  evenement    Evenement? @relation(fields: [evenementId], references: [id], onDelete: Cascade)
+  bericht      Bericht?   @relation(fields: [berichtId], references: [id], onDelete: Cascade)
+}
+
+model Gebeurtenis {
+  id           String   @id @default(cuid())
+  evenementId  String
+  gebruikerId  String?
+  type         String   // status | offerte | factuur | betaling | bericht | wijziging | integratie
+  omschrijving String
+  data         Json?
+  createdAt    DateTime @default(now())
+  evenement    Evenement @relation(fields: [evenementId], references: [id], onDelete: Cascade)
+  gebruiker    Gebruiker? @relation(fields: [gebruikerId], references: [id])
+
+  @@index([evenementId, createdAt])
+}
+
+// ==================== KOPPELINGEN ====================
+
+model ApiKey {
+  id          String   @id @default(cuid())
+  vestigingId String
+  naam        String   // "Bonnie AI", "Website"
+  hash        String   @unique
+  prefix      String
+  scopes      String[] // lezen:evenementen, schrijven:aanvragen, ...
+  laatstGebruikt DateTime?
+  ingetrokkenOp DateTime?
+  createdAt   DateTime @default(now())
+  vestiging   Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+}
+
+model Integratie {
+  id          String   @id @default(cuid())
+  vestigingId String
+  soort       String   // zenchef | mollie | basecone | twinfield | shiftbase | email
+  config      Json     // versleutelde sleutels en instellingen
+  actief      Boolean  @default(false)
+  laatsteSync DateTime?
+  laatsteFout String?
+  vestiging   Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  mappings    IntegratieMapping[]
+  referenties IntegratieReferentie[]
+
+  @@unique([vestigingId, soort])
+}
+
+model IntegratieMapping {
+  id            String  @id @default(cuid())
+  integratieId  String
+  ruimteId      String?
+  externSoort   String  // zone | grootboek | omzetgroep
+  externId      String
+  integratie    Integratie @relation(fields: [integratieId], references: [id], onDelete: Cascade)
+  ruimte        Ruimte?    @relation(fields: [ruimteId], references: [id], onDelete: Cascade)
+}
+
+model IntegratieReferentie {
+  id            String   @id @default(cuid())
+  integratieId  String
+  evenementId   String?
+  activiteitId  String?
+  externSoort   String   // reservering | boeking | betaling
+  externId      String
+  status        String?
+  laatsteSync   DateTime?
+  integratie    Integratie  @relation(fields: [integratieId], references: [id], onDelete: Cascade)
+  evenement     Evenement?  @relation(fields: [evenementId], references: [id], onDelete: Cascade)
+  activiteit    Activiteit? @relation(fields: [activiteitId], references: [id], onDelete: Cascade)
+}
+
+model Webhook {
+  id          String   @id @default(cuid())
+  vestigingId String
+  url         String
+  geheim      String
+  gebeurtenissen String[]
+  actief      Boolean  @default(true)
+  vestiging   Vestiging @relation(fields: [vestigingId], references: [id], onDelete: Cascade)
+  leveringen  WebhookLevering[]
+}
+
+model WebhookLevering {
+  id         String   @id @default(cuid())
+  webhookId  String
+  gebeurtenis String
+  payload    Json
+  status     String   @default("wachtend") // wachtend | geleverd | mislukt
+  pogingen   Int      @default(0)
+  laatsteFout String?
+  createdAt  DateTime @default(now())
+  webhook    Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+}
+
+model Job {
+  id         String   @id @default(cuid())
+  soort      String   // optie_vervallen | herinnering | ingepland_bericht | zenchef_sync | week_vooraf | boekhouding
+  payload    Json
+  uitvoerenOp DateTime
+  status     String   @default("wachtend") // wachtend | bezig | klaar | mislukt
+  pogingen   Int      @default(0)
+  laatsteFout String?
+  createdAt  DateTime @default(now())
+
+  @@index([status, uitvoerenOp])
+}
