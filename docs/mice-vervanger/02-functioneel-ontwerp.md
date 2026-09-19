@@ -17,8 +17,9 @@ locatie.
 4. **Automatiseren wat MICE handmatig laat.** Aanbetalingsfactuur bij
    bevestiging, herinneringen op vervaldatum (met een controle op inmiddels
    ontvangen betaling), optievervaldatum, "over een week"-mail.
-5. **Koppelbaar.** Eigen REST-API en webhooks vanaf het begin, zodat Bonnie,
-   Zenchef, de boekhouding en de website eraan kunnen.
+5. **Koppelbaar.** Eigen REST-API en webhooks vanaf het begin, zodat de
+   boekhouding en de website eraan kunnen en latere koppelingen (zoals Bonnie
+   of Zenchef) mogelijk blijven.
 6. **Niet meer dan nodig.** Marges, planborden en kassakoppeling komen pas als
    daar vraag naar is.
 
@@ -39,8 +40,9 @@ locatie.
 
 - Locatiegegevens: naam, rechtspersoon, adres, btw-nummer, IBAN, logo, kleuren,
   afzenderadres en reply-to, handtekening, talen.
-- Ruimtes: naam, capaciteit per opstelling, binnen of buiten, koppelbaar aan
-  een Zenchef-zone.
+- Ruimtes: naam, capaciteit per opstelling, binnen of buiten; veld voor een
+  externe zone (bijvoorbeeld Zenchef) blijft in het datamodel, maar wordt in de
+  eerste bouw niet gebruikt.
 - Evenementtypes met standaard offerte-sjabloon, standaard betaalregeling,
   standaard optieduur en standaard draaiboek.
 - Productcatalogus: categorieën (welkomst, lunch, diner, drank, activiteiten,
@@ -172,9 +174,10 @@ locatie.
   locatie of per factuur.
 - Bijlagen: PDF en UBL 2.1 (Peppol BIS 3 compatibel), zodat zakelijke klanten
   en de boekhouding ze kunnen inlezen.
-- Betalingen: Mollie-betaallink (iDEAL, creditcard, Bancontact), handmatige
-  registratie van bankoverschrijvingen, deelbetalingen; status betaald bij
-  Mollie-webhook.
+- Betalingen: bankoverschrijving als standaard (IBAN en betaalkenmerk per
+  locatie op factuur en in klantomgeving, handmatige registratie van ontvangen
+  betalingen); Mollie-betaallink (iDEAL, creditcard, Bancontact) als
+  aanvullende optie met status betaald bij webhook; deelbetalingen.
 - Herinneringen: automatisch op vervaldatum plus x dagen, met controle dat er
   geen betaling is binnengekomen; tweede herinnering en aanmaning met eigen
   sjabloon; alles zichtbaar in de tijdlijn.
@@ -205,10 +208,10 @@ locatie.
 | Koppeling | Gedrag |
 |---|---|
 | Website (widget) | aanvraagpagina embedden; beschikbaarheid tonen |
-| Bonnie AI | beschikbaarheid per datum en ruimte uitlezen; aanvraag aanmaken met naam, telefoon, e-mail, datum, gasten, type; lopende dossiers op naam of telefoon opzoeken |
-| Zenchef | per activiteit op een gekoppelde ruimte een reservering aanmaken, bijwerken en annuleren in de gekoppelde zone; samenvoegen van aansluitende activiteiten |
+| Bonnie AI | **vervallen** (besluit 19 sep 2026): koppeling wordt niet gebouwd; telefonische aanvragen worden handmatig ingevoerd. De REST-API maakt een latere koppeling mogelijk |
+| Zenchef | **vervallen** (besluit 19 sep 2026): niet noodzakelijk; het reserveringsteam krijgt evenementen via iCal-feed of dagelijkse takenlijst |
 | Twinfield of Basecone | verzonden facturen en creditnota's als verkoopboeking aanleveren; betaalstatus terug (bij Twinfield) |
-| Mollie | betaallinks en webhooks |
+| Mollie | betaallinks en webhooks, aanvullend op bankoverschrijving |
 | Google Agenda en Outlook | iCal-feed |
 | Shiftbase (later) | bevestigde evenementen als open diensten |
 | Kassa Eijsink (later) | groepsomzet uit de kassa koppelen aan een dossier voor nacalculatie |
@@ -237,10 +240,12 @@ locatie.
 - **Must** (nodig om MICE op te zeggen): inrichting, dossiers, activiteiten,
   offertes met online akkoord, klantomgeving, berichten met inbound e-mail,
   agenda, draaiboek, werklijsten, facturatie met PDF en UBL, aanbetalingen en
-  verrekening, Mollie, herinneringen, CRM-basis, iCal, REST-API voor Bonnie,
-  Zenchef-koppeling (omdat die nu geactiveerd wordt), export van alle data.
+  verrekening, betaalregistratie (bankoverschrijving standaard, Mollie
+  aanvullend), herinneringen, CRM-basis, iCal, REST-API v1, export van alle
+  data.
 - **Should**: workflows en taken, interactieve keuzes in offertes, prijsvarianten
   met periode, rapportages, boekhoudkoppeling, meertalige sjablonen (DE, EN).
 - **Could**: planbord, Shiftbase, kassakoppeling, marges, review-verzoek,
-  gastenlijst en tafelindeling.
+  gastenlijst en tafelindeling, Bonnie- en Zenchef-koppeling (beide op
+  19 september 2026 uit de eerste bouw gehaald).
 - **Won't (nu)**: ticketverkoop, kamerreservering, kassa-functionaliteit.

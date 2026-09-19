@@ -9,12 +9,12 @@
 | ORM | Prisma | al in gebruik; migraties; type-veilig |
 | Auth | Auth.js (NextAuth v5) met e-mail plus wachtwoord en passkeys later; sessies met rol per locatie | al in gebruik in de repo |
 | Hosting | Vercel (app) plus beheerde Postgres; achtergrondtaken via Vercel Cron of een kleine worker | laagste beheerlast; Koen heeft al een Vercel-account |
-| Achtergrondtaken | een `jobs`-tabel in Postgres plus een cron-endpoint elke 5 minuten (verval van opties, herinneringen, ingeplande mails, synchronisatie Zenchef) | geen extra infrastructuur; herhaalbaar en zichtbaar |
+| Achtergrondtaken | een `jobs`-tabel in Postgres plus een cron-endpoint elke 5 minuten (verval van opties, herinneringen, ingeplande mails) | geen extra infrastructuur; herhaalbaar en zichtbaar |
 | E-mail uit | Postmark of Resend, met eigen domein per locatie (DKIM, SPF, DMARC) | hoge bezorgbaarheid van transactionele mail |
 | E-mail in | inbound webhook van dezelfde dienst op `reply+<dossiertoken>@mail.<domein>` | antwoorden landen automatisch in het dossier |
 | PDF | server-side rendering van een HTML-sjabloon naar PDF met Playwright/Chromium (of `@react-pdf/renderer` als de hosting geen Chromium toestaat) | pixelvaste huisstijl, één sjabloon voor scherm en PDF |
 | UBL | eigen generator op basis van UBL 2.1 Invoice en CreditNote, gevalideerd tegen Peppol BIS 3 schematron in tests | vereist voor zakelijke klanten en boekhoudkoppeling |
-| Betalingen | Mollie API (payment links en webhooks) | standaard in NL, iDEAL |
+| Betalingen | bankoverschrijving met IBAN en betaalkenmerk per locatie als standaard; Mollie API (payment links en webhooks) aanvullend | voorkeur van Koen (19 sep 2026); iDEAL voor gasten die online willen betalen |
 | Bestanden | S3-compatibele opslag (Vercel Blob of Cloudflare R2) met ondertekende downloadlinks met vervaldatum | bijlagen, PDF's, UBL |
 | Agenda-export | eigen iCal-endpoint per locatie en ruimte met token | zelfde als MICE |
 | Zoeken | Postgres full-text op dossiers, contacten en berichten | geen aparte zoekmachine nodig |
@@ -103,6 +103,10 @@ aanmaken). Jobs zijn idempotent en herhaalbaar.
 
 ### 5.2 Bonnie AI
 
+**Besluit 19 september 2026: de Bonnie-koppeling vervalt en wordt niet
+gebouwd.** De tekst hieronder blijft staan als ontwerp voor het geval dat
+later verandert; de REST-API uit 5.1 maakt route 1 dan alsnog mogelijk.
+
 Bonnie leest vandaag de MICE-API. Twee routes:
 
 1. Bonnie ondersteunt een generieke of eigen koppeling: wij leveren
@@ -113,9 +117,14 @@ Bonnie leest vandaag de MICE-API. Twee routes:
    endpoints nodig; die halen we uit de MICE REST-referentie zodra we die
    kunnen inzien (vanuit een gewone browser), of uit het Bonnie-dashboard.
 
-Dit is de eerste externe afhankelijkheid die geregeld moet zijn vóór opzegging.
+Zonder koppeling is er geen afhankelijkheid van Bonnie meer vóór opzegging.
 
 ### 5.3 Zenchef
+
+**Besluit 19 september 2026: de Zenchef-koppeling is niet noodzakelijk en
+valt buiten de eerste bouw.** Het terugvalscenario hieronder is het
+uitgangspunt; de mapping ruimte-zone blijft als optioneel veld in het
+datamodel staan.
 
 - Zenchef heeft een partner-API; MICE gebruikt die om reserveringen aan te
   maken. Toegang vereist aanmelding als integratiepartner bij Zenchef.
@@ -139,9 +148,15 @@ Dit is de eerste externe afhankelijkheid die geregeld moet zijn vóór opzegging
   ophalen. Meer werk, wel volledig.
 - Advies: start met A in fase 5, B als latere uitbreiding.
 
-### 5.5 Mollie
+### 5.5 Betalingen: bankoverschrijving en Mollie
 
-- Per locatie een Mollie-profiel en API-key. Betaallink per factuur;
+- Bankoverschrijving is de standaard (besluit 19 september 2026). Elke
+  factuur en de klantomgeving tonen IBAN en een betaalkenmerk per locatie;
+  ontvangen betalingen worden handmatig geregistreerd op het dossier. Later
+  eventueel bankimport (CAMT.053 of CSV) met automatische matching op
+  kenmerk.
+- Mollie is aanvullend. Per locatie bestaat al een Mollie-account; per
+  locatie een profiel en API-key. Betaallink per factuur;
   webhook `POST /api/webhooks/mollie` zet de betaling op betaald en triggert
   bevestigingsmail en tijdlijn. Terugbetalingen bij creditnota's handmatig
   vanuit het dashboard, of later via API.
